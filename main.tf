@@ -1,6 +1,7 @@
 # VPC
 resource "aws_vpc" "prod-rock-vpc" {
-  cidr_block       = "10.0.0.0/16"
+  cidr_block       = var.cidre-for-vpc
+  enable_dns_hostnames = "true"
   instance_tenancy = "default"
 
   tags = {
@@ -12,7 +13,7 @@ resource "aws_vpc" "prod-rock-vpc" {
 
 resource "aws_subnet" "test-priv-sub-1" {
   vpc_id     = aws_vpc.prod-rock-vpc.id
-  cidr_block = "10.0.1.0/24"
+  cidr_block = var.cidre-for-test-priv-sub-1
 
   tags = {
     Name = "test-priv-sub-1"
@@ -21,7 +22,7 @@ resource "aws_subnet" "test-priv-sub-1" {
 
 resource "aws_subnet" "test-priv-sub-2" {
   vpc_id     = aws_vpc.prod-rock-vpc.id
-  cidr_block = "10.0.2.0/24"
+  cidr_block = var.cidre-for-test-priv-sub-2
 
   tags = {
     Name = "test-priv-sub-2"
@@ -32,7 +33,7 @@ resource "aws_subnet" "test-priv-sub-2" {
 
 resource "aws_subnet" "test-public-sub-1" {
   vpc_id     = aws_vpc.prod-rock-vpc.id
-  cidr_block = "10.0.3.0/24"
+  cidr_block = var.cidre-for-test-public-sub-1
 
   tags = {
     Name = "test-public-sub-1"
@@ -41,7 +42,7 @@ resource "aws_subnet" "test-public-sub-1" {
 
 resource "aws_subnet" "test-public-sub-2" {
   vpc_id     = aws_vpc.prod-rock-vpc.id
-  cidr_block = "10.0.4.0/24"
+  cidr_block = var.cidre-for-test-public-sub-2
 
   tags = {
     Name = "test-public-sub-2"
@@ -54,7 +55,7 @@ resource "aws_route_table" "test-priv-route-table" {
   vpc_id = aws_vpc.prod-rock-vpc.id
 
   tags = {
-    Name = "test-priv-route-table"
+    Name = var.name-for-private-route-table
   }
 }
 
@@ -64,7 +65,7 @@ resource "aws_route_table" "test-pub-route-table" {
   vpc_id = aws_vpc.prod-rock-vpc.id
 
   tags = {
-    Name = "test-pub-route-table"
+    Name = var.name-for-public-route-table
   }
 }
 
@@ -102,7 +103,7 @@ resource "aws_internet_gateway" "test-igw" {
   vpc_id = aws_vpc.prod-rock-vpc.id
 
   tags = {
-    Name = "test-igw"
+    Name = var.name-for-internet-gateway
   }
 }
 
@@ -111,7 +112,7 @@ resource "aws_internet_gateway" "test-igw" {
 resource "aws_route" "test-igw-association" {
   route_table_id            = aws_route_table.test-pub-route-table.id
   gateway_id                = aws_internet_gateway.test-igw.id
-  destination_cidr_block    = "0.0.0.0/0"
+  destination_cidr_block    = var.cidre-for-route
 }
 
 # Nat Gateway
@@ -119,12 +120,12 @@ resource "aws_route" "test-igw-association" {
 # test nat association
 
 resource "aws_nat_gateway" "test-nat-association" {
-  connectivity_type = "private"
+  connectivity_type = var.test-nat-association-connectivity-type
   subnet_id         = aws_subnet.test-priv-sub-1.id
 }
 
 resource "aws_nat_gateway" "test-nat-association-1" {
-  connectivity_type = "private"
+  connectivity_type = var.test-nat-association-1-connectivity-type
   subnet_id         = aws_subnet.test-priv-sub-2.id
 }
 
@@ -135,9 +136,8 @@ resource "aws_security_group" "test-sec-group" {
   description = "security group using terraform"
   vpc_id      = aws_vpc.prod-rock-vpc.id
 
-
  ingress {
-    description      = "HTTP"
+    description      = "TLS from VPC"
     from_port        = 80
     to_port          = 80
     protocol         = "tcp"
@@ -145,49 +145,58 @@ resource "aws_security_group" "test-sec-group" {
   }
 
    ingress {
-    description      = "SSH"
+    description      = "TLS from VPC"
     from_port        = 22
     to_port          = 22
     protocol         = "tcp"
     cidr_blocks      = ["0.0.0.0/0"]
   }
 
+   egress {
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1"
+    cidr_blocks      = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+
   tags = {
-    Name = "test-sec-group"
+    Name = "tec-sec-group"
   }
 }
+
 
 # EC2 (Ubuntu 18.04 Public)
 
 resource "aws_instance" "test-server-1" {
-  ami           = "ami-05a8c865b4de3b127"
-  instance_type = "t2.micro"
+  ami           = var.ami
+  instance_type = var.instance-type
   count = 1
-  aws_security_groups = aws_security_groups.test-sec-group.id
-  key_name = "Derek-KP"
-  availability_zone = "eu-west-2b"
+  key_name = var.key-name
+  availability_zone = var.availability_zone
+  vpc_security_group_ids = [aws_security_group.test-sec-group.id]
   subnet_id   = aws_subnet.test-public-sub-1.id
   associate_public_ip_address = "true"
 
 
   tags = {
-  Name = "test-server-1"
+  Name = var.name-for-instance
   }
   }
 
-# EC2 (Ubuntu 18.04 Private)
+# EC2 (Ubuntu 18.04 Public)
 
 resource "aws_instance" "test-server-2" {
-  ami           = "ami-05a8c865b4de3b127"
-  instance_type = "t2.micro"
+  ami           = var.ami-1
+  instance_type = var.instance-type-1
   count = 1
-  aws_security_group = aws_security_group.test-sec-group.id
-  key_name = "Ans-KP"
-  availability_zone = "eu-west-2b"
-  subnet_id   = aws_subnet.test-priv-sub-1.id
+  key_name = var.key-name_1
+  availability_zone = var.availability_zone_1
+  vpc_security_group_ids = [aws_security_group.test-sec-group.id]
+  subnet_id   = aws_subnet.test-public-sub-1.id
   associate_public_ip_address = "true"
 
   tags = {
-  Name = "test-server-2"
+  Name = var.name-for-instance-1
 }
   }
